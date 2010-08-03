@@ -1,4 +1,7 @@
 <?php
+// $Id$
+
+define('CAMP_SCHEDULE_NODE_CACHE_KEY', 'camp_schedule_nodes');
 
 /**
  * Implementation of hook_menu().
@@ -58,6 +61,21 @@ function camp_schedule_help($path) {
 }
 
 /**
+ * Implementation of hook_nodeapi().
+ */
+function camp_schedule_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  $type = variable_get('camp_schedule_node_type', 'session');
+
+  // Clear the cache whenever a session node is being created,
+  // updated or deleted.
+  if ($node->type == $type && in_array($op, array('delete', 'delete revision', 'insert', 'update'))) {
+    cache_clear_all(CAMP_SCHEDULE_NODE_CACHE_KEY, 'cache');
+    ctools_static_reset(CAMP_SCHEDULE_NODE_CACHE_KEY);
+  }
+}
+
+
+/**
  * Implementation of hook_views_api().
  */
 function camp_schedule_views_api() {
@@ -66,3 +84,43 @@ function camp_schedule_views_api() {
     'path' => drupal_get_path('module', 'camp_schedule'),
   );
 }
+
+/**
+ * Load the current session nodes.
+ */
+function camp_schedule_load_nodes($reset = FALSE) {
+  $sessions = &ctools_static(CAMP_SCHEDULE_NODE_CACHE_KEY, array(), $reset);
+
+  if (!empty($sessions)) {
+    return $sessions;
+  }
+
+  // Return data from cache if available.
+  $cache = ($reset) ? FALSE : cache_get(CAMP_SCHEDULE_NODE_CACHE_KEY);
+  if ($cache && !empty($cache->data)) {
+    $sessions = $cache->data;
+  }
+  else {
+    $type = variable_get('camp_schedule_node_type', 'session');
+
+    $query = db_query("
+      SELECT n.nid FROM {node} AS n
+      INNER JOIN {content_type_%s} AS c ON (n.nid = c.nid AND c.field_session_type_value = 'session')
+      WHERE n.type = '%s' AND n.status = 1
+      ORDER BY c.field_session_day_value, c.field_session_room_value, c.field_session_time_value, n.title ASC
+    ", $type, $type);
+
+    while ($nid = db_result($query)) {
+      $node = node_load($nid);
+      if ($node) {
+        $sessions[] = $node;
+      }
+    }
+
+    // Cache the loaded nodes until cleared.
+    cache_set(CAMP_SCHEDULE_NODE_CACHE_KEY, $sessions);
+  }
+
+  return $sessions;
+}
+

@@ -51,16 +51,8 @@ function camp_schedule_manage_form(&$form_state) {
   // Find all of our session nodes.
   $form['#tree'] = TRUE;
 
-  $query = db_query("
-    SELECT n.nid FROM {node} AS n
-    INNER JOIN {content_type_%s} AS c ON (n.nid = c.nid AND c.field_session_type_value = 'session')
-    WHERE n.type = '%s' AND n.status = 1
-    ORDER BY c.field_session_day_value, c.field_session_room_value, c.field_session_time_value, n.title ASC
-  ", $type, $type);
-
-  while ($row = db_fetch_object($query)) {
+  foreach (camp_schedule_load_nodes() as $node) {
     // We need to put the node object in $form['#node'] so that content_field_form can use it to put together the field.
-    $node = node_load($row->nid);
     if (isset($node->nid)) {
       $form['#node'] = $node;
       $form['nodes'][$node->nid]['title'] = array('#value' => l($node->title, 'node/'. $node->nid));
