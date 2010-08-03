@@ -1,5 +1,5 @@
 <?php
-// $Id$
+// $Id: camp_schedule.module 187 2010-08-03 13:40:07Z mikkelhoegh $
 
 define('CAMP_SCHEDULE_NODE_CACHE_KEY', 'camp_schedule_nodes');
 
@@ -104,7 +104,7 @@ function camp_schedule_load_nodes($reset = FALSE) {
     $type = variable_get('camp_schedule_node_type', 'session');
 
     $query = db_query("
-      SELECT n.nid FROM {node} AS n
+      SELECT DISTINCT(n.nid) FROM {node} AS n
       INNER JOIN {content_type_%s} AS c ON (n.nid = c.nid AND c.field_session_type_value = 'session')
       WHERE n.type = '%s' AND n.status = 1
       ORDER BY c.field_session_day_value, c.field_session_room_value, c.field_session_time_value, n.title ASC
