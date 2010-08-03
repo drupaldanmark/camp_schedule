@@ -50,29 +50,53 @@ function camp_schedule_manage_form(&$form_state) {
 
   // Find all of our session nodes.
   $form['#tree'] = TRUE;
-  // $query = db_query("SELECT nid FROM {node} WHERE type = '%s' AND status = 1", $type);
-  $query = db_query("SELECT * FROM {node} n LEFT JOIN {content_type_%s} c ON (n.nid = c.nid) WHERE n.type = '%s' ORDER BY c.field_session_day_value, c.field_session_room_value, c.field_session_time_value ASC", $type, $type);
+
+  $query = db_query("
+    SELECT n.nid FROM {node} AS n
+    INNER JOIN {content_type_%s} AS c ON (n.nid = c.nid AND c.field_session_type_value = 'session')
+    WHERE n.type = '%s' AND n.status = 1
+    ORDER BY c.field_session_day_value, c.field_session_room_value, c.field_session_time_value, n.title ASC
+  ", $type, $type);
+
   while ($row = db_fetch_object($query)) {
     // We need to put the node object in $form['#node'] so that content_field_form can use it to put together the field.
     $node = node_load($row->nid);
-    $form['#node'] = $node;
-    
-    $form['nodes'][$node->nid]['title'] = array('#value' => l($node->title, 'node/'. $node->nid));
+    if (isset($node->nid)) {
+      $form['#node'] = $node;
+      $form['nodes'][$node->nid]['title'] = array('#value' => l($node->title, 'node/'. $node->nid));
 
-    foreach ($cck_fields['fields'] as $field_name => $field) {
-      if (in_array($field_name, $render)) {
-        $form['#field_info'][$field['field_name']] = $field;
-        $form['nodes'][$node->nid] += content_field_form($form, $form_state, $field);
+      foreach ($cck_fields['fields'] as $field_name => $field) {
+        if (in_array($field_name, $render)) {
+          $form['#field_info'][$field['field_name']] = $field;
+          $form['nodes'][$node->nid] += content_field_form($form, $form_state, $field);
+        }
       }
+      $form['nodes'][$node->nid]['field_session_day']['#title'] = '';
+      $form['nodes'][$node->nid]['field_session_room']['#title'] = '';
+      $form['nodes'][$node->nid]['field_session_time']['#title'] = '';
     }
-    $form['nodes'][$node->nid]['field_session_day']['#title'] = '';
-    $form['nodes'][$node->nid]['field_session_room']['#title'] = '';
-    $form['nodes'][$node->nid]['field_session_time']['#title'] = '';
   }
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => 'Save',
   );
+  if (!isset($form['#after_build'])) {
+    $form['#after_build'] = array();
+  }
+  $form['#after_build'][] = 'camp_schedule_manage_form_after_build';  
+  return $form;
+}
+
+/**
+ * "After build" callback for node forms. Register the fields you want to alter.
+ */
+function camp_schedule_manage_form_after_build($form, &$form_state) {
+  foreach ($form['nodes'] as $nid => $field) {
+    unset($form['nodes'][$nid]['field_session_room']['value']['#options']['bof1']);
+    unset($form['nodes'][$nid]['field_session_room']['value']['#options']['bof2']);
+    unset($form['nodes'][$nid]['field_session_room']['value']['#options']['bof3']);
+    unset($form['nodes'][$nid]['field_session_room']['value']['#options']['bof4']);
+  }
   return $form;
 }
 
