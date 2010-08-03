@@ -1,0 +1,7 @@
+name = Camp Timetable
+description = DrupalCamp timetable module.
+core = 6.x
+dependencies[] = camp_schedule
+dependencies[] = ctools
+php = 5.2
+

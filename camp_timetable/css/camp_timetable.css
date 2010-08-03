@@ -1,0 +1,39 @@
+/* $Id$ */
+
+/**
+ * @file
+ * Styling the camp timetable.
+ */
+
+#camp-timetable caption {
+  background: black;
+  color: white;
+  font-size: 20px;
+  margin: 10px auto;
+  padding: 10px;
+  text-transform: uppercase;
+  width: 300px;
+}
+
+#camp-timetable thead th {
+  text-align: center;
+}
+
+#camp-timetable tr.even {
+  background-color: white;
+}
+
+#camp-timetable th.timeslot {
+  font-size: 11px;
+  padding: 5px;
+}
+
+#camp-timetable .session-node h4 {
+  font-size: 12px;
+  text-transform: none;
+}
+
+#camp-timetable .presenter-list {
+  font-size: 11px;
+}
+

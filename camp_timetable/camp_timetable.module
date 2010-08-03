@@ -1,0 +1,61 @@
+<?php
+// $Id: camp_timetable.module 188 2010-08-03 13:41:16Z mikkelhoegh $
+
+
+/**
+ * @file
+ * Camp timetable module.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function camp_timetable_menu() {
+  $items = array();
+
+  $items['sessions/timetable'] = array(
+    'title' => 'Session timetable',
+    'description' => 'Displays a timetable of all the sessions, organised by room  and day.',
+    'page callback' => 'camp_timetable_pages_timetable',
+    'access arguments' => array('view timetable'),
+    'file' => 'camp_timetable.pages.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function camp_timetable_perm() {
+  return array('view timetable');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function camp_timetable_theme($existing, $type, $theme, $path) {
+  return array(
+    'camp_timetable_session' => array(
+      'arguments' => array('node' => NULL),
+      'template' => 'camp_timetable-session',
+      'path' => $path . '/templates',
+    ),
+  );
+}
+
+/**
+ * Template preprocess for camp_timetable_session.
+ */
+function template_preprocess_camp_timetable_session(&$vars) {
+  $vars['classes'] = array('session-node');
+
+  $presenters = array(
+    l($vars['node']->name, 'user/' . $vars['node']->uid),
+  );
+
+  $vars['presenter_list'] = theme('item_list', $presenters, NULL, 'ul', array(
+    'class' => 'presenter-list'
+  ));
+}
+
