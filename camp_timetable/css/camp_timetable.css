@@ -6,13 +6,10 @@
  */
 
 #camp-timetable caption {
-  background: black;
-  color: white;
-  font-size: 20px;
-  margin: 10px auto;
-  padding: 10px;
-  text-transform: uppercase;
+  font-size: 30px;
+  line-height: 30px;
   width: 300px;
+  margin-bottom: -5px;
 }
 
 #camp-timetable thead th {
@@ -30,6 +27,18 @@
 
 #camp-timetable .session-node h4 {
   font-size: 12px;
+  font-variant: normal;
+  text-transform: none;
+}
+
+#camp-timetable .session-node h4 a {
+  color: #036;
+}
+
+#camp-timetable .keynote-track h4 {
+  font-size: 16px;
+  font-variant: normal;
+  text-align: center;
   text-transform: none;
 }
 
@@ -37,3 +46,14 @@
   font-size: 11px;
 }
 
+#camp-timetable .track-7253 { background-color: #fc9; }
+#camp-timetable .track-7238 { background-color: #bd8; }
+#camp-timetable .track-7298 { background-color: #cff; }
+#camp-timetable .track-7303 { background-color: #f9c; }
+#camp-timetable .track-7308 { background-color: #ff9; }
+#camp-timetable .track-7313 { background-color: #9cf; }
+#camp-timetable .track-7968, 
+#camp-timetable .keynote-track { background-color: white; }
+#camp-timetable .track-10019 { background-color: #ddd; }
+
+#camp-timetable table.timetable {margin-bottom: 10px;}

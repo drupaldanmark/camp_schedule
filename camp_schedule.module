@@ -1,7 +1,8 @@
 <?php
-// $Id: camp_schedule.module 187 2010-08-03 13:40:07Z mikkelhoegh $
+// $Id: camp_schedule.module 198 2010-08-05 21:14:27Z beltofte $
 
-define('CAMP_SCHEDULE_NODE_CACHE_KEY', 'camp_schedule_nodes');
+define('CAMP_SCHEDULE_NODE_CACHE_KEY', 'camp_schedule_nodes_type_session');
+define('CAMP_SCHEDULE_NODE_CACHE_KEY_BOF', 'camp_schedule_nodes_type_bof');
 
 /**
  * Implementation of hook_menu().
@@ -70,7 +71,9 @@ function camp_schedule_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
   // updated or deleted.
   if ($node->type == $type && in_array($op, array('delete', 'delete revision', 'insert', 'update'))) {
     cache_clear_all(CAMP_SCHEDULE_NODE_CACHE_KEY, 'cache');
+    cache_clear_all(CAMP_SCHEDULE_NODE_CACHE_KEY_BOF, 'cache');
     ctools_static_reset(CAMP_SCHEDULE_NODE_CACHE_KEY);
+    ctools_static_reset(CAMP_SCHEDULE_NODE_CACHE_KEY_BOF);
   }
 }
 
@@ -88,15 +91,21 @@ function camp_schedule_views_api() {
 /**
  * Load the current session nodes.
  */
-function camp_schedule_load_nodes($reset = FALSE) {
-  $sessions = &ctools_static(CAMP_SCHEDULE_NODE_CACHE_KEY, array(), $reset);
+function camp_schedule_load_nodes($reset = FALSE, $session_type = 'session') {
+  if ($session_type == 'bof') {
+    $cache_key = CAMP_SCHEDULE_NODE_CACHE_KEY_BOF;
+  }
+  else {
+    $cache_key = CAMP_SCHEDULE_NODE_CACHE_KEY;
+  }
+  $sessions = &ctools_static($cache_key, array(), $reset);
 
   if (!empty($sessions)) {
     return $sessions;
   }
 
   // Return data from cache if available.
-  $cache = ($reset) ? FALSE : cache_get(CAMP_SCHEDULE_NODE_CACHE_KEY);
+  $cache = ($reset) ? FALSE : cache_get($cache_key);
   if ($cache && !empty($cache->data)) {
     $sessions = $cache->data;
   }
@@ -105,10 +114,10 @@ function camp_schedule_load_nodes($reset = FALSE) {
 
     $query = db_query("
       SELECT DISTINCT(n.nid) FROM {node} AS n
-      INNER JOIN {content_type_%s} AS c ON (n.nid = c.nid AND c.field_session_type_value = 'session')
+      INNER JOIN {content_type_%s} AS c ON (n.nid = c.nid AND c.field_session_type_value = '%s')
       WHERE n.type = '%s' AND n.status = 1
       ORDER BY c.field_session_day_value, c.field_session_room_value, c.field_session_time_value, n.title ASC
-    ", $type, $type);
+    ", $type, $session_type, $type);
 
     while ($nid = db_result($query)) {
       $node = node_load($nid);
@@ -118,7 +127,7 @@ function camp_schedule_load_nodes($reset = FALSE) {
     }
 
     // Cache the loaded nodes until cleared.
-    cache_set(CAMP_SCHEDULE_NODE_CACHE_KEY, $sessions);
+    cache_set($cache_key, $sessions);
   }
 
   return $sessions;

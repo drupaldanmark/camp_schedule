@@ -1,5 +1,5 @@
 <?php
-// $Id: camp_timetable.module 188 2010-08-03 13:41:16Z mikkelhoegh $
+// $Id: camp_timetable.module 214 2010-08-11 07:37:38Z beltofte $
 
 
 /**
@@ -20,7 +20,22 @@ function camp_timetable_menu() {
     'access arguments' => array('view timetable'),
     'file' => 'camp_timetable.pages.inc',
   );
-
+  $items['sessions/timetable/bofs'] = array(
+    'title' => 'BOF timetable',
+    'description' => 'Displays a timetable of all the BOF sessions, organised by room and day.',
+    'page callback' => 'camp_timetable_pages_timetable',
+    'access arguments' => array('view timetable'),
+    'file' => 'camp_timetable.pages.inc',
+  );
+  $items['admin/settings/timetable'] = array(
+    'title' => 'Timetable',
+    'description' => 'Settings for the timetable pages',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('camp_timetable_settings'),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'camp_timetable.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
   return $items;
 }
 
@@ -41,7 +56,25 @@ function camp_timetable_theme($existing, $type, $theme, $path) {
       'template' => 'camp_timetable-session',
       'path' => $path . '/templates',
     ),
+    'camp_timetable_help' => array(
+      'arguments' => array('title' => NULL, 'body' => NULL),
+      'template' => 'camp_timetable-help',
+      'path' => $path . '/templates',
+    ),
   );
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function camp_timetable_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  $type = variable_get('camp_schedule_node_type', 'session');
+
+  // Clear the cache whenever a session node is being created,
+  // updated or deleted.
+  if ($node->type == $type && in_array($op, array('delete', 'delete revision', 'insert', 'update'))) {
+    cache_clear_all('camp_timetable_rendered_output', 'cache', TRUE);
+  }
 }
 
 /**
@@ -50,9 +83,34 @@ function camp_timetable_theme($existing, $type, $theme, $path) {
 function template_preprocess_camp_timetable_session(&$vars) {
   $vars['classes'] = array('session-node');
 
-  $presenters = array(
-    l($vars['node']->name, 'user/' . $vars['node']->uid),
-  );
+  $presenters = array();
+
+  // Add node author name as presenter if normal user.
+  if ($vars['node']->uid > 1) {
+    $account = user_load($vars['node']->uid);
+
+    $presenters[] = theme('username', $account);
+  }
+
+  // Collect possible author nids.
+  $nids = array();
+  foreach ($vars['node']->field_session_presenters as $field) {
+    if ($field['nid'] > 0) {
+      $nids[] = (int) $field['nid'];
+    }
+  }
+
+  if (!empty($nids)) {
+    $query = db_query("SELECT uid FROM node WHERE nid IN (" . implode(',', $nids) . ");");
+
+    while ($uid = db_result($query)) {
+      // Don’t print the main presenter twice.
+      if ($account && $uid == $account->uid) {
+        continue;
+      }
+      $presenters[] = theme('username', user_load($uid));
+    }
+  }
 
   $vars['presenter_list'] = theme('item_list', $presenters, NULL, 'ul', array(
     'class' => 'presenter-list'
