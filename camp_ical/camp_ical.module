@@ -1,0 +1,354 @@
+<?php
+
+/**
+ * @file
+ * Camp iCal module.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function camp_ical_menu() {
+  $items = array();
+  $items['sessions/ical'] = array(
+    'title' => 'iCal',
+    'page callback' => 'camp_ical_view',
+    'access arguments' => array('view ical'),
+  );
+  $items['user/%user/schedule/ical'] = array(
+    'title' => 'iCal',
+    'page callback' => 'camp_ical_user_view',
+    'page arguments' => array(1),
+    'access arguments' => array('view ical'),
+  );
+  $items['user/schedule/ical'] = array(
+    'title' => 'iCal',
+    'page callback' => 'camp_ical_user_redirect',
+    'access arguments' => array('view ical'),
+  );  
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function camp_ical_perm() {
+  return array('view ical');
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function camp_ical_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  $type = variable_get('camp_schedule_node_type', 'session');
+
+  // Clear the cache whenever a session node is being created,
+  // updated or deleted.
+  if ($node->type == $type && in_array($op, array('delete', 'delete revision', 'insert', 'update'))) {
+    cache_clear_all('camp_ical_output', 'cache', TRUE);
+  }
+}
+
+/**
+ * View the iCal file.
+ */
+function camp_ical_view() {
+  $session_types = array('session', 'bof');
+  $session_type = arg(2);
+  $term = arg(3);
+
+  // The session type is required
+  if (empty($session_type) || !in_array($session_type, $session_types)) {
+    drupal_not_found();
+  }
+  
+  // The type is required
+  if (empty($term) || !is_numeric($term)) {
+    $term = 'all';
+  }
+  
+  // Return data from cache if available.
+  $output = '';
+  $cache_key = 'camp_ical_output_' . $session_type . '_' . $term;
+  $cache = cache_get($cache_key);
+  if ($cache && !empty($cache->data)) {
+    $output = $cache->data;
+  }
+  else {
+    $output = camp_ical_create($session_type, $term);
+
+    // Only cache output for english language.
+    if ($GLOBALS['language']->language == 'en') {
+      cache_set($cache_key, $output);
+    }
+  }
+
+  // Outputting iCal file and correct headers.
+  $filesize = strlen($output);
+  $filename = date('YmdHis') . '.ics';
+  header('Content-Type: text/calendar; charset=utf-8');
+  header('Content-Length: ' . $filesize);
+  header('Content-Disposition: attachment; filename="' . $filename . '"');
+  header('Cache-Control: max-age=10');
+  echo $output;
+  die();
+}
+
+/**
+ * Creating the iCal file.
+ */
+function camp_ical_create($session_type, $term = 'all') {
+  module_load_include('php', 'camp_ical', 'iCalcreator/iCalcreator.class');
+  
+  $node_type = variable_get('camp_schedule_node_type', 'session');
+  
+  if (is_numeric($term)) {
+    $query = db_query("
+      SELECT
+        DISTINCT(n.nid) 
+      FROM 
+        {node} AS n
+        INNER JOIN {content_type_%s} AS c ON (n.vid = c.vid AND c.field_session_type_value = '%s')
+        INNER JOIN {term_node} AS t ON (n.vid = t.vid AND t.tid = %d)
+      WHERE 
+        n.type = '%s' AND 
+        n.status = 1
+      ORDER BY 
+        c.field_session_day_value, 
+        c.field_session_time_value, 
+        c.field_session_room_value, 
+        n.title
+    ", $node_type, $session_type, $term, $node_type);    
+  }
+  else {
+    $query = db_query("
+      SELECT
+        DISTINCT(n.nid) 
+      FROM 
+        {node} AS n
+        INNER JOIN {content_type_%s} AS c ON (n.vid = c.vid AND c.field_session_type_value = '%s')
+      WHERE 
+        n.type = '%s' AND 
+        n.status = 1
+      ORDER BY 
+        c.field_session_day_value, 
+        c.field_session_time_value, 
+        c.field_session_room_value, 
+        n.title
+    ", $node_type, $session_type, $node_type);
+  }
+
+  $sessions = array();
+  while ($nid = db_result($query)) {
+    $node = node_load($nid);
+    if ($node) {
+      $sessions[] = $node;
+    }
+  }
+
+  return camp_ical_create_calendar($sessions);
+}
+
+/**
+ * View the iCal file for my schedule.
+ */
+function camp_ical_user_view($account) {
+  global $user;
+  
+  // The session type is required
+  if ($account->uid != $user->uid) {
+    drupal_access_denied();
+    exit;
+  }  
+
+  $output = camp_ical_user_create($account);
+
+  // Outputting iCal file and correct headers.
+  $filesize = strlen($output);
+  $filename = date('YmdHis') . '.ics';
+  header('Content-Type: text/calendar; charset=utf-8');
+  header('Content-Length: ' . $filesize);
+  header('Content-Disposition: attachment; filename="' . $filename . '"');
+  header('Cache-Control: max-age=10');
+  echo $output;
+  die();
+}
+
+/**
+ * Creating the iCal file for my schedule
+ */
+function camp_ical_user_create($account) { 
+  module_load_include('php', 'camp_ical', 'iCalcreator/iCalcreator.class');
+  
+  $node_type = variable_get('camp_schedule_node_type', 'session');  
+
+  $query = db_query("
+    SELECT
+      DISTINCT(n.nid) 
+    FROM 
+      {node} AS n
+      INNER JOIN {content_type_%s} AS c ON (n.vid = c.vid AND (c.field_session_type_value = 'session' OR c.field_session_type_value = 'bof'))
+      INNER JOIN {flag_content} AS f ON (n.nid = f.content_id AND f.content_type = 'node' AND f.uid = %d)
+    WHERE 
+      n.type = '%s' AND 
+      n.status = 1
+    ORDER BY 
+      c.field_session_day_value, 
+      c.field_session_time_value, 
+      c.field_session_room_value, 
+      n.title
+  ", $node_type, $account->uid, $node_type);
+
+  $sessions = array();
+  while ($nid = db_result($query)) {
+    $node = node_load($nid);
+    if ($node) {
+      $sessions[] = $node;
+    }
+  }
+
+  return camp_ical_create_calendar($sessions);
+}
+
+/**
+ * Creating ical output.
+ */
+function camp_ical_create_calendar($sessions) {
+  $type = variable_get('camp_schedule_node_type', 'session');
+  $fields = content_fields(NULL, $type);
+  $room_labels = content_allowed_values($fields['field_session_room']);
+  $day_labels = content_allowed_values($fields['field_session_day']);
+  $time_labels = content_allowed_values($fields['field_session_time']);
+  
+  // Creating new calendar
+  $v = new vcalendar();
+  $v->setConfig('unique_id', 'cph2010.drupal.org');
+  $v->setProperty('method', 'PUBLISH');
+  $v->setProperty("x-wr-calname", "DrupalCon Copenhagen");
+  $v->setProperty("X-WR-CALDESC", "Sessions and BOF's at DrupalCon Copenhagen 2010");
+  $v->setProperty("X-WR-TIMEZONE", "Europe/Copenhagen");
+
+  // Adding the sessions as events
+  foreach ($sessions as $session) {
+    $vevent = new vevent();
+    $date = $session->field_session_day[0]['value'];
+    $year = substr($date, 0, 4);
+    $month = substr($date, 4, 2);
+    $day = substr($date, 6);
+    $time = $session->field_session_time[0]['value'];
+    $time_expl = explode('-', $time);
+    $time_start = explode(':', $time_expl[0]);
+    $time_end = explode(':', $time_expl[1]);
+    $room = $session->field_session_room[0]['value'];
+    $terms = camp_ical_term($session);
+    $description = array();
+    $description[] = "Presenters:\n" . camp_ical_presenters($session) . "\n";
+    if (isset($terms[23])) {
+      $description[] = "Track: " . implode(', ', $terms[23]);
+    }
+    if (isset($terms[18])) {
+      $description[] = "Experience: " . implode(', ', $terms[18]);
+    }
+    if (isset($terms[5])) {
+      $description[] = "Focus: " . implode(', ', $terms[5]);
+    }
+    $description[] = "---------------------------";
+    $description[] = trim(strip_tags($session->body));
+    $start = array('year' => $year, 'month' => $month, 'day' => $day, 'hour' => $time_start[0], 'min' => $time_start[1], 'sec' => 0);
+    $end = array('year' => $year, 'month' => $month, 'day' => $day, 'hour' => $time_end[0], 'min' => $time_end[1], 'sec' => 0);
+    $vevent->setProperty('dtstart', $start);
+    $end = array('year' => $year, 'month' => $month, 'day' => $day, 'hour' => $time_end[0], 'min' => $time_end[1], 'sec' => 0);
+    $vevent->setProperty('dtend', $end);
+    $vevent->setProperty('LOCATION', 'Bella Center, ' . $room_labels[$room]);    
+    $vevent->setProperty('summary', check_plain($session->title));
+    $vevent->setProperty('description', implode("\n\n", $description));
+    $v->setComponent ($vevent);
+  }
+  
+  return $v->createCalendar();
+}
+
+/**
+ * Creating string with presenters.
+ * 
+ * @param object $node
+ * @return string
+ */
+function camp_ical_presenters($node) {
+  $presenters = array();
+
+  // Add node author name as presenter if normal user.
+  if ($node->uid > 1) {
+    $account = user_load($node->uid);
+    $presenters[] = trim(camp_ical_presenter_name($account));
+  }
+
+  // Collect possible author nids.
+  $nids = array();
+  foreach ($node->field_session_presenters as $field) {
+    if ($field['nid'] > 0) {
+      $nids[] = (int) $field['nid'];
+    }
+  }
+
+  if (!empty($nids)) {
+    $query = db_query("SELECT uid FROM node WHERE nid IN (" . implode(',', $nids) . ");");
+
+    while ($uid = db_result($query)) {
+      // Don’t print the main presenter twice.
+      if ($account && $uid == $account->uid) {
+        continue;
+      }
+      $presenters[] = trim(camp_ical_presenter_name(user_load($uid)));
+    }
+  }
+
+  return implode("\n", $presenters);
+}
+
+/**
+ * Finding the presenter name.
+ * 
+ * @param object $object
+ * @return string
+ */
+function camp_ical_presenter_name($object) {
+  $name = $object->name;
+  
+  if ($object->uid && function_exists('content_profile_load')) {
+    $content_profile = content_profile_load('profile', $object->uid);
+  }
+
+  if ($content_profile) {
+    $name = $content_profile->title;
+  }
+  
+  return $name;
+}
+
+/**
+ * Extracting terms from node object and return array.
+ * 
+ * @param object $node
+ * @return array
+ */
+function camp_ical_term($node) {
+  $terms = array();
+  foreach ((array)$node->taxonomy as $term) {
+    $terms[$term->vid][] = check_plain($term->name);
+  }  
+  return $terms;
+}
+
+/**
+ * Redirecting the user to the my schedule page at the user profile
+ */
+function camp_ical_user_redirect() {
+  global $user;
+  if ($user-uid > 0) {
+    drupal_goto('user/' . $user->uid . '/schedule/ical');
+  }
+  else {
+    drupal_access_denied();
+  }   
+}
